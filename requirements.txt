@@ -1,0 +1,4 @@
+datasets==2.20.0
+tiktoken==0.7.0
+torch==2.4.0
+
