@@ -36,12 +36,25 @@ class Attention(nn.Module):
         return y
 
 
+class MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.n_embed = config.n_embd
+        self.dropout_prob = config.dropout_prob
+        self.linear1 = nn.Linear(self.n_embed, 4 * self.n_embed)
+        self.linear2 = nn.Linear(4 * self.n_embed, self.n_embed)
+        self.dropout = nn.Dropout(self.dropout_prob)
+        self.gelu = nn.GELU()
+
+    def forward(self, x):
+        x = self.gelu(self.linear1(x))
+        x = self.dropout(self.linear2(x))
+        return x
 
 
 class AttentionBlock(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout_prob = config.dropout_prob
         self.bias = config.bias
@@ -49,7 +62,20 @@ class AttentionBlock(nn.Module):
         self.causal_self_attn = Attention(config)
         self.layer_norm1 = nn.LayerNorm(self.n_embd, bias=self.bias)
         self.layer_norm2 = nn.LayerNorm(self.n_embd, bias=self.bias)
-        self.feed_forward = nn.Linear(self.n_embd, self.n_embd)
+        self.feed_forward = self.MLP(config)
+
+    def forward(self, x):
+        x = x + self.causal_self_attn(self.layer_norm1(x))
+        x = x + self.feed_forward(self.layer_norm2(x))
+        return x
+
+
+class GPT(nn.Module):
+    def __init__(self, config):
+        
+
+    def forward(self, x):
+        pass
 
 
 ## config is a direct copy from karpathy's code
