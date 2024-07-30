@@ -1,6 +1,3 @@
-from dataclasses import dataclass
-
-import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
@@ -72,19 +69,29 @@ class AttentionBlock(nn.Module):
 
 class GPT(nn.Module):
     def __init__(self, config):
+        super().__init__()
+        self.block_size = config.block_size
+        self.n_embed = config.n_embd
+        self.vocab_size = config.vocab_size
+        self.n_layer = config.n_layer
+        self.dropout_prob = config.dropout_prob
+        self.bias = config.bias
+
+        self.transformer = nn.ModuleDict(dict(
+            input_embedding = nn.Embedding(self.vocab_size, self.n_embed),
+            positional_embedding = nn.Embedding(self.block_size, self.n_embed),
+            hidden_blocks = nn.ModuleList(
+                [AttentionBlock(config) for _ in range(self.n_layer)]
+            ),
+            drop = nn.Dropout(self.dropout_prob),
+            layer_norm = nn.LayerNorm(self.n_embed, self.bias)
+        ))
+        self.lm_head = nn.Linear(self.n_embed, self.vocab_size, bias=False)
+
+        # tie the weights of language model head and embedding
+        self.transformer.input_embedding.weight = self.lm_head.weight
         
 
     def forward(self, x):
         pass
 
-
-## config is a direct copy from karpathy's code
-@dataclass
-class GPTConfig:
-    block_size: int = 1024
-    vocab_size: int = 50304 # GPT-2 vocab_size of 50257, padded up to nearest multiple of 64 for efficiency
-    n_layer: int = 12
-    n_head: int = 12
-    n_embd: int = 768
-    dropout_prob: float = 0.0
-    bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
