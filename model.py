@@ -92,6 +92,23 @@ class GPT(nn.Module):
         self.transformer.input_embedding.weight = self.lm_head.weight
         
 
-    def forward(self, x):
-        pass
+    def forward(self, x, targets=None):
+        token_embed = self.transformer.input_embedding(x)
+        pos_embed = self.transformer.positional_embedding(x)
+        x = self.transformer.drop(token_embed + pos_embed)
+        for block in self.transformer.hidden_blocks:
+            x = block(x)
+        x = self.transformer.layer_norm(x)
+        if targets is not None:
+            logits = self.lm_head(x)
+            loss = F.cross_entropy(
+                logits.view(-1, logits.size(-1)),
+                targets.view(-1),
+                ignore_index=-1,
+            )
+        else:
+            logits = self.lm_head(x[:, [-1], :])
+            loss = None
+        return logits, loss
+
 
