@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
@@ -59,7 +60,7 @@ class AttentionBlock(nn.Module):
         self.causal_self_attn = Attention(config)
         self.layer_norm1 = nn.LayerNorm(self.n_embd, bias=self.bias)
         self.layer_norm2 = nn.LayerNorm(self.n_embd, bias=self.bias)
-        self.feed_forward = self.MLP(config)
+        self.feed_forward = MLP(config)
 
     def forward(self, x):
         x = x + self.causal_self_attn(self.layer_norm1(x))
@@ -93,8 +94,11 @@ class GPT(nn.Module):
         
 
     def forward(self, x, targets=None):
+        B, T = x.size()
+        device = x.device
+        pos = torch.arange(0, T, dtype=torch.long, device=device)
         token_embed = self.transformer.input_embedding(x)
-        pos_embed = self.transformer.positional_embedding(x)
+        pos_embed = self.transformer.positional_embedding(pos)
         x = self.transformer.drop(token_embed + pos_embed)
         for block in self.transformer.hidden_blocks:
             x = block(x)
@@ -107,7 +111,7 @@ class GPT(nn.Module):
                 ignore_index=-1,
             )
         else:
-            logits = self.lm_head(x[:, [-1], :])
+            logits = self.lm_head(x[:, -1, :])
             loss = None
         return logits, loss
 
