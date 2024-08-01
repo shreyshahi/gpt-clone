@@ -135,13 +135,21 @@ optimizer = torch.optim.AdamW(
     fused=True,
 )
 
+full_batch_size = 524288
+num_micro_batches = full_batch_size // (B * T)
+
 model.train()
-for i, (x, targets) in enumerate(data):
+for i in range(max_steps):
     t0 = time.time()
     optimizer.zero_grad()
-    with torch.autocast(device_type=device, dtype=torch.bfloat16):
-        logits, loss = model(x, targets)
-    loss.backward()
+    loss_accum = 0.0
+    for micro_iter in range(num_micro_batches):
+        x, targets = next(data)
+        with torch.autocast(device_type=device, dtype=torch.bfloat16):
+            logits, loss = model(x, targets)
+        loss = loss / num_micro_batches
+        loss_accum += loss.detach()
+        loss.backward()
     norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
     lr = get_lr(i)
     for param_group in optimizer.param_groups:
@@ -150,7 +158,7 @@ for i, (x, targets) in enumerate(data):
     torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1 - t0) * 1000
-    tokens_per_sec = B * T / (t1 - t0)
-    print(f"step: {i} | loss: {loss.item():.4f} | lr: {lr:.4e} | norm: {norm:.4f} | dt: {dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
+    tokens_per_sec = B * T * num_micro_batches / (t1 - t0)
+    print(f"step: {i} | loss: {loss_accum.item():.4f} | lr: {lr:.4e} | norm: {norm:.4f} | dt: {dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
     if i > 50:
         break
