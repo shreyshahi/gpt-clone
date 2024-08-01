@@ -25,7 +25,7 @@ class Attention(nn.Module):
 
         y = F.scaled_dot_product_attention(
                 q, k, v,
-                dropout_p=self.dropout if self.training else 0.0,
+                dropout_p=self.dropout_prob if self.training else 0.0,
                 is_causal=True
             )
         # Y is B,nh,T,C//nh dimensional we want B,T,C
