@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
+import math
 import tiktoken
 import time
 import torch
-import torch.nn.functional as F
 
 from model import GPT
 
@@ -79,6 +79,23 @@ class TinyShakespeareDataset(object):
             self.current_pos = 0
         return(x.to(self.device), y.to(self.device))
 
+
+max_lr = 6e-4
+min_lr = 0.1 * max_lr
+warmup_steps = 10
+max_steps=50
+def get_lr(step):
+    if step < warmup_steps:
+        return max_lr * step / warmup_steps
+
+    if step > max_steps:
+        return min_lr
+
+    decay_ratio = (step - warmup_steps) / (max_steps - warmup_steps)
+    scale = 0.5 * (1.0 + math.cos(math.pi * decay_ratio))
+    return min_lr + scale * (max_lr - min_lr)
+
+
 device = "cuda"
 
 torch.set_float32_matmul_precision("high")
@@ -91,7 +108,32 @@ data = TinyShakespeareDataset(config, device)
 model.to(device)
 model = torch.compile(model)
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+decay_params = []
+no_decay_params = []
+for name, param in model.named_parameters():
+    if param.requires_grad:
+        if param.dim() >= 2:
+            decay_params.append(param)
+        else:
+            no_decay_params.append(param)
+
+num_decay_params = sum(p.numel() for p in decay_params)
+num_no_decay_params = sum(p.numel() for p in no_decay_params)
+
+print(f"Num decayed tensors: {len(decay_params)}, with {num_decay_params:,} parameters")
+print(f"Num non decayed tensors: {len(no_decay_params)}, with {num_no_decay_params:,} parameters")
+
+optim_groups = [
+    {"params": decay_params, "weight_decay": 0.1},
+    {"params": no_decay_params, "weight_decay": 0.0}
+]
+optimizer = torch.optim.AdamW(
+    optim_groups,
+    lr=6e-4,
+    betas=(0.9, 0.95),
+    eps=1e-8,
+    fused=True,
+)
 
 model.train()
 for i, (x, targets) in enumerate(data):
@@ -100,11 +142,15 @@ for i, (x, targets) in enumerate(data):
     with torch.autocast(device_type=device, dtype=torch.bfloat16):
         logits, loss = model(x, targets)
     loss.backward()
+    norm = torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+    lr = get_lr(i)
+    for param_group in optimizer.param_groups:
+        param_group["lr"] = lr
     optimizer.step()
     torch.cuda.synchronize()
     t1 = time.time()
     dt = (t1 - t0) * 1000
     tokens_per_sec = B * T / (t1 - t0)
-    print(f"step: {i}, loss: {loss.item():.4f}, dt: {dt:.2f}ms, tok/sec: {tokens_per_sec:.2f}")
+    print(f"step: {i} | loss: {loss.item():.4f} | lr: {lr:.4e} | norm: {norm:.4f} | dt: {dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
     if i > 50:
         break
