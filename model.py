@@ -12,6 +12,7 @@ class Attention(nn.Module):
         self.bias = config.bias
         self.initial_projection = nn.Linear(self.n_embd, 3*self.n_embd)
         self.output_projection = nn.Linear(self.n_embd, self.n_embd)
+        self.output_projection.GPT_SCALING = 1
         self.out_dropout = nn.Dropout(self.dropout_prob)
 
     def forward(self, x):
@@ -41,6 +42,7 @@ class MLP(nn.Module):
         self.dropout_prob = config.dropout_prob
         self.linear1 = nn.Linear(self.n_embed, 4 * self.n_embed)
         self.linear2 = nn.Linear(4 * self.n_embed, self.n_embed)
+        self.linear2.GPT_SCALING = 1
         self.dropout = nn.Dropout(self.dropout_prob)
         self.gelu = nn.GELU()
 
@@ -91,7 +93,19 @@ class GPT(nn.Module):
 
         # tie the weights of language model head and embedding
         self.transformer.input_embedding.weight = self.lm_head.weight
+
+        self.apply(self._init_weights)
         
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            std = 0.02
+            if hasattr(module, "GPT_SCALING"):
+                std *= (2 * self.n_layer) ** -0.5
+            nn.init.normal_(module.weight, mean=0.0, std=std)
+            if module.bias is not None:
+                nn.init.zeros_(module.bias)
+        if isinstance(module, nn.Embedding):
+            nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, x, targets=None):
         B, T = x.size()
