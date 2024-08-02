@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+import datasets
 import math
 import tiktoken
 import time
@@ -80,6 +81,67 @@ class TinyShakespeareDataset(object):
         return(x.to(self.device), y.to(self.device))
 
 
+class FineWebEduDataset(object):
+    def __init__(self, config, device, batchsize=B):
+        self.B = batchsize
+        self.T = config.block_size
+        self.enc = tiktoken.get_encoding("gpt2")
+        self.eot = self.enc._special_tokens['<|endoftext|>']
+        data_save_path = "/mnt/datasets/fineweb-edu"
+
+        self.dataset = datasets.load_dataset(
+            "HuggingFaceFW/fineweb-edu",
+            name="sample-10BT",
+            cache_dir=data_save_path
+        )
+
+        self.max_dataset_index = len(self.dataset["train"]) - 1
+        self.current_dataset_index = 0
+        self.current_document_position = 0
+        self.current_doc = self._load_next_doc()
+        self.current_buffer = []
+
+    def _load_next_doc(self):
+        text = self.dataset["train"][self.current_dataset_index]["text"]
+        tokens = [self.eot]
+        tokens.extend(self.enc.encode(text))
+        self.current_dataset_index += 1
+        if self.current_dataset_index > self.max_dataset_index:
+            self.current_dataset_index = 0
+        return tokens
+
+    def _get_next_buffer(self):
+        B = self.B
+        T = self.T
+        cur_doc_pos = self.current_document_position
+        cur_len = len(self.current_buffer)
+        if cur_doc_pos + B * T + 1 - cur_len> len(self.current_doc):
+            self.current_buffer.extend(self.current_doc[cur_doc_pos:])
+            self.current_doc = self._load_next_doc()
+            self.current_document_position = 0
+            self._get_next_buffer()
+        else:
+            self.current_buffer.extend(
+                self.current_doc[
+                    cur_doc_pos:(cur_doc_pos + B * T + 1 - cur_len)
+                ]
+            )
+            self.current_document_position += B * T + 1 - cur_len
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        self._get_next_buffer()
+        buff = torch.tensor(self.current_buffer[:], dtype=torch.long).to(device)
+        x = buff[:-1].view(self.B, self.T)
+        y = buff[1:].view(self.B, self.T)
+        self.current_buffer = []
+        return x, y
+
+
+
+
 max_lr = 6e-4
 min_lr = 0.1 * max_lr
 warmup_steps = 10
@@ -103,7 +165,7 @@ torch.set_float32_matmul_precision("high")
 config = GPTConfig()
 
 model = GPT(config)
-data = TinyShakespeareDataset(config, device)
+data = FineWebEduDataset(config, device)
 
 model.to(device)
 model = torch.compile(model)
