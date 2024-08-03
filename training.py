@@ -227,7 +227,7 @@ num_micro_batches = full_batch_size // (B * T)
 model.train()
 num_iter = max_steps * 2 # 2 epochs of training
 for i in range(num_iter):
-    last_step = (step == num_iter - 1)
+    last_step = (i == num_iter - 1)
     t0 = time.time()
     optimizer.zero_grad()
     loss_accum = 0.0

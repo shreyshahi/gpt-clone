@@ -73,6 +73,7 @@ class AttentionBlock(nn.Module):
 class GPT(nn.Module):
     def __init__(self, config):
         super().__init__()
+        self.config = config
         self.block_size = config.block_size
         self.n_embed = config.n_embd
         self.vocab_size = config.vocab_size
