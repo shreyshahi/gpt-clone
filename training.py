@@ -82,7 +82,13 @@ class TinyShakespeareDataset(object):
 
 
 class FineWebEduDataset(object):
-    def __init__(self, config, device, batchsize=B):
+    def __init__(self, config, device, split, batchsize=B):
+        """
+        first 50000 documents reserved for validation. Rest for training
+        """
+        self.split = split
+        self.device = device
+        assert (split == "train") or (split == "val")
         self.B = batchsize
         self.T = config.block_size
         self.enc = tiktoken.get_encoding("gpt2")
@@ -97,6 +103,8 @@ class FineWebEduDataset(object):
 
         self.max_dataset_index = len(self.dataset["train"]) - 1
         self.current_dataset_index = 0
+        if split == "train":
+            self.current_dataset_index = 50000
         self.current_document_position = 0
         self.current_doc = self._load_next_doc()
         self.current_buffer = []
@@ -106,8 +114,12 @@ class FineWebEduDataset(object):
         tokens = [self.eot]
         tokens.extend(self.enc.encode(text))
         self.current_dataset_index += 1
-        if self.current_dataset_index > self.max_dataset_index:
-            self.current_dataset_index = 0
+        if self.split == "train":
+            if self.current_dataset_index > self.max_dataset_index:
+                self.current_dataset_index = 50000
+        if self.split == "val":
+            if self.current_dataset_index > 49999:
+                self.current_dataset_index = 0
         return tokens
 
     def _get_next_buffer(self):
@@ -133,14 +145,13 @@ class FineWebEduDataset(object):
 
     def __next__(self):
         self._get_next_buffer()
-        buff = torch.tensor(self.current_buffer[:], dtype=torch.long).to(device)
+        buff = torch.tensor(
+            self.current_buffer[:], dtype=torch.long
+        ).to(self.device)
         x = buff[:-1].view(self.B, self.T)
         y = buff[1:].view(self.B, self.T)
         self.current_buffer = []
         return x, y
-
-
-
 
 max_lr = 6e-4
 min_lr = 0.1 * max_lr
@@ -165,7 +176,7 @@ torch.set_float32_matmul_precision("high")
 config = GPTConfig()
 
 model = GPT(config)
-data = FineWebEduDataset(config, device)
+data = FineWebEduDataset(config, device, "train")
 
 model.to(device)
 model = torch.compile(model)
