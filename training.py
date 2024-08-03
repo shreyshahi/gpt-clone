@@ -5,9 +5,20 @@ import math
 import tiktoken
 import time
 import torch
+import wandb
 
 from model import GPT
 from validation import perform_validation, evaluate_hellaswag
+
+wandb.login()
+
+wandb.init(
+    project = "clone-gpt2",
+    config = {
+        "num_epoch": 2,
+        "run_number": 1
+    }
+)
 
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
@@ -156,8 +167,8 @@ class FineWebEduDataset(object):
 
 max_lr = 6e-4
 min_lr = 0.1 * max_lr
-warmup_steps = 10
-max_steps=50
+warmup_steps = 715
+max_steps=19073
 def get_lr(step):
     if step < warmup_steps:
         return max_lr * step / warmup_steps
@@ -214,7 +225,9 @@ full_batch_size = 524288
 num_micro_batches = full_batch_size // (B * T)
 
 model.train()
-for i in range(max_steps):
+num_iter = max_steps * 2 # 2 epochs of training
+for i in range(num_iter):
+    last_step = (step == num_iter - 1)
     t0 = time.time()
     optimizer.zero_grad()
     loss_accum = 0.0
@@ -235,10 +248,28 @@ for i in range(max_steps):
     dt = (t1 - t0) * 1000
     tokens_per_sec = B * T * num_micro_batches / (t1 - t0)
     print(f"step: {i} | loss: {loss_accum.item():.4f} | lr: {lr:.4e} | norm: {norm:.4f} | dt: {dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
-    if i % 5 == 0:
+    wandb.log({"step": i, "train_loss": loss_accum})
+    wandb.log({"step": i, "lr": lr})
+    wandb.log({"step": i, "norm": norm}) 
+    wandb.log({"step": i, "dt": dt})
+    wandb.log({"step": i, "tokens_per_sec": tokens_per_sec})
+    if i % 100 == 0 or last_step:
         validation_loss = perform_validation(model, device, val_set)
         print(f"VAL | step {i} | loss: {validation_loss:.4f}")
+        wandb.log({"step": i, "validation_loss": validation_loss})
+
+    if i % 200 == 0 or last_step:
         hellaswag_score = evaluate_hellaswag(model, device)
-        print(f"AWAG | step {i} | loss: {hellaswag_score:.4f}")
-    if i > 50:
-        break
+        wandb.log({"step": i, "hellaswag_score": hellaswag_score})
+        print(f"SAWAG | step {i} | loss: {hellaswag_score:.4f}")
+
+    if i % 500 == 0 or last_step:
+        checkpoint_path = f"./checkpoints/model_{i:05d}.pt"
+        checkpoint = {
+            "model": model.state_dict(),
+            "config": model.config,
+            "step": i,
+            "optim_state": optimizer.state_dict()
+        }
+        torch.save(checkpoint, checkpoint_path)
+
