@@ -117,15 +117,14 @@ class GPT(nn.Module):
         for block in self.transformer.hidden_blocks:
             x = block(x)
         x = self.transformer.layer_norm(x)
+        logits = self.lm_head(x)
         if targets is not None:
-            logits = self.lm_head(x)
             loss = F.cross_entropy(
                 logits.view(-1, logits.size(-1)),
                 targets.view(-1),
                 ignore_index=-1,
             )
         else:
-            logits = self.lm_head(x[:, -1, :])
             loss = None
         return logits, loss
 

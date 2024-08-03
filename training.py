@@ -239,5 +239,6 @@ for i in range(max_steps):
         validation_loss = perform_validation(model, device, val_set)
         print(f"VAL | step {i} | loss: {validation_loss:.4f}")
         hellaswag_score = evaluate_hellaswag(model, device)
+        print(f"AWAG | step {i} | loss: {hellaswag_score:.4f}")
     if i > 50:
         break
