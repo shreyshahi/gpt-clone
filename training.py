@@ -7,6 +7,7 @@ import time
 import torch
 
 from model import GPT
+from validation import perform_validation, evaluate_hellaswag
 
 torch.manual_seed(42)
 torch.cuda.manual_seed(42)
@@ -177,6 +178,7 @@ config = GPTConfig()
 
 model = GPT(config)
 data = FineWebEduDataset(config, device, "train")
+val_set = FineWebEduDataset(config, device, "val")
 
 model.to(device)
 model = torch.compile(model)
@@ -233,5 +235,9 @@ for i in range(max_steps):
     dt = (t1 - t0) * 1000
     tokens_per_sec = B * T * num_micro_batches / (t1 - t0)
     print(f"step: {i} | loss: {loss_accum.item():.4f} | lr: {lr:.4e} | norm: {norm:.4f} | dt: {dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
+    if i % 5 == 0:
+        validation_loss = perform_validation(model, device, val_set)
+        print(f"VAL | step {i} | loss: {validation_loss:.4f}")
+        hellaswag_score = evaluate_hellaswag(model, device)
     if i > 50:
         break

@@ -1,4 +1,5 @@
 datasets==2.20.0
+ipython==8.26.0
 tiktoken==0.7.0
 torch==2.4.0
 
