@@ -124,7 +124,7 @@ class FineWebEduDataset(object):
     def _load_next_doc(self):
         text = self.dataset["train"][self.current_dataset_index]["text"]
         tokens = [self.eot]
-        tokens.extend(self.enc.encode(text))
+        tokens.extend(self.enc.encode_ordinary(text))
         self.current_dataset_index += 1
         if self.split == "train":
             if self.current_dataset_index > self.max_dataset_index:
@@ -248,19 +248,24 @@ for i in range(num_iter):
     dt = (t1 - t0) * 1000
     tokens_per_sec = B * T * num_micro_batches / (t1 - t0)
     print(f"step: {i} | loss: {loss_accum.item():.4f} | lr: {lr:.4e} | norm: {norm:.4f} | dt: {dt:.2f}ms | tok/sec: {tokens_per_sec:.2f}")
-    wandb.log({"step": i, "train_loss": loss_accum})
-    wandb.log({"step": i, "lr": lr})
-    wandb.log({"step": i, "norm": norm}) 
-    wandb.log({"step": i, "dt": dt})
-    wandb.log({"step": i, "tokens_per_sec": tokens_per_sec})
+    wandb.log(
+        {
+            "step": i,
+            "train_loss": loss_accum,
+            "lr": lr,
+            "norm": norm,
+            "dt": dt,
+            "tokens_per_sec": tokens_per_sec
+        }
+    )
     if i % 100 == 0 or last_step:
         validation_loss = perform_validation(model, device, val_set)
         print(f"VAL | step {i} | loss: {validation_loss:.4f}")
-        wandb.log({"step": i, "validation_loss": validation_loss})
+        wandb.log({"validation_loss": validation_loss})
 
     if i % 200 == 0 or last_step:
         hellaswag_score = evaluate_hellaswag(model, device)
-        wandb.log({"step": i, "hellaswag_score": hellaswag_score})
+        wandb.log({"hellaswag_score": hellaswag_score})
         print(f"SAWAG | step {i} | loss: {hellaswag_score:.4f}")
 
     if i % 500 == 0 or last_step:
